@@ -47,7 +47,7 @@ module RxLogic (
 // Local reg
     reg [2:0] count= 0;
     reg [7:0] shift_reg;
-	reg write_fifo_reg = 0 ;
+	reg write_fifo_reg = 0;
 
     reg state;
     reg ns_state;
@@ -64,13 +64,14 @@ always @(posedge PCLK or negedge CLEAR_B)begin
         shift_reg <= 8'hzz;
         count <= 0;
         write_fifo_reg <= 0;
+        state <= ns_state;
     end else begin
 	    ns_state <= WRITING;
             case(state)
             IDLE : begin
                 count <= 0;
                 ns_state <= IDLE;
-			   write_fifo_reg <= 0;
+		        write_fifo_reg <= 0;
                 if(SSPFSSIN)begin
                     shift_reg <= 8'h0;
                     ns_state <= WRITING;
@@ -86,11 +87,11 @@ always @(posedge PCLK or negedge CLEAR_B)begin
                     write_fifo_reg <= 0;
                     ns_state <= WRITING;
                 end
-		count <= (count == 7)? 0 : count + 1;
+		        count <= (count == 7)? 0 : count + 1;
             end
             endcase
+        state <= ns_state;
     end
-	state <= ns_state;
 end
 
 

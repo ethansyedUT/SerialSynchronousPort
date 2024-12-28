@@ -12,7 +12,7 @@ input [7:0] RxData;
 input write_ready;
 
 
-output reg [7:0] PRDATA;
+output [7:0] PRDATA;
 output SSPRXINTR;
 output fifo_empty;
 
@@ -31,7 +31,7 @@ reg [7:0] data_out = 8'hzz;
 //
 
 //	Output Assigns
-//assign PRDATA = (PSEL && !PWRITE)? data_out : 8'hzz;
+assign PRDATA = (PSEL && !PWRITE)? data_out : 8'hzz;
 assign SSPRXINTR = (count == FIFO_Depth);		// Fifo full
 assign fifo_empty = (count == 0);				// Fifo empty
 
@@ -60,11 +60,8 @@ always @ (posedge PCLK) begin
 		 
 		if((PSEL && !PWRITE) && (!fifo_empty)) begin
 			data_out <= fifo[fifo_read_ptr];
-			PRDATA <=  fifo[fifo_read_ptr];
 			fifo_read_ptr <= fifo_read_ptr + 1;
 			count <= count - 1;
-		end else begin
-			PRDATA <= 8'hzz;
 		end
 		
 	end

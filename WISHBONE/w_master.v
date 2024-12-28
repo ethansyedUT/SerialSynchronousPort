@@ -25,9 +25,9 @@ module w_master (
     input [31:0] dat_i, 
     input ack_i, tagn_i,
     // To w_slave
-    output [25:0] adr_o, 
-    output [31:0] dat_o, 
-    output we_o, stb_o, cyc_o, tagn_o,
+    output reg [25:0] adr_o, 
+    output reg [31:0] dat_o, 
+    output reg we_o, stb_o, cyc_o, tagn_o,
     // Bidirectional
     inout [31:0] dataBus
 );

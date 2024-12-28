@@ -60,8 +60,8 @@
 
 module TOP;
 
-  reg	phi1;
-  reg	phi2;
+  wire	phi1;       // CHANGED
+  wire	phi2;       // CHANGED
   reg	clear;
   reg 	test;
   reg 	scanin;
@@ -137,6 +137,99 @@ module TOP;
    
    
 
+   // CMU connections
+    // input    
+                            // clk_i clkgen
+                            // clear alr defined
+    wire [1:0] ssp_intr;    // ssp_intr_i - ssp_intr
+    // Output
+                    // phi defined alr
+                    // phi2 defined alr
+    wire clk;       // clk_o (WISHBONE + SSP)
+    wire clear_o;   // clear_o - WISHBONE S + M
+    wire ssp_clear; // Separate clear signal for SSP
+
+
+    // WISHBONE Master connections
+    // Input
+    wire [25:0] arm_to_master_adrBus;       // addressBus - arm_to_master_adrBus
+    wire [31:0] arm_to_master_dataBus;      // dataBus - dataBus
+    wire mem_req;                           // mem_req - mem_req
+    wire memoryRead;                        // memoryRead - memoryRead (prev r)
+    wire memoryWrite;                       // memoryWrite - memoryWrite (prev w)
+                // rst_i - clear_o
+                // clk_i - clk 
+                // dat_i - slave_dat_o
+                // ack_i - slave_ack_o
+                // tagn_i - slave_tagn_o
+    // Output
+    wire [25:0] master_adr_o;
+    wire [31:0] master_dat_o;
+    wire master_we_o;
+    wire master_stb_o;
+    wire master_cyc_o;
+    wire master_tagn_o;
+
+
+
+    // WISHBONE Slave connections
+    // Input
+                // rst_i - clear_0
+                // clk_i - clk
+                // adr_i - master_adr_o
+                // dat_i - master_dat_o
+                // we_i - master_we_o
+                // stb_i - master_stb_o
+                // cyc_i - master_cyc_o
+                // tagn_i - master_tagn_o
+    // Output
+    wire [31:0] slave_dat_o;
+    wire slave_ack_o;
+    wire slave_tagn_o;
+
+    wire [25:0] mem_adr_o;
+    wire [31:0] slave_to_mem_dataBus;
+    wire mem_r_o;
+    wire mem_w_o;
+    wire ssp_sel_o; 
+    wire ssp_w_o;
+
+
+    // Memory
+    // Input
+    
+
+    // SSP connections
+    // Input
+                // CLEAR_B - ssp_clear
+                // PCLK - clk
+                // PSELF - ssp_sel_o
+                // PWRITE - ssp_w_o
+                // PWDATA - slave_to_mem_dataBus[7:0]
+                // SSPCLKIN - SSPCLKOUT
+                // SSPFSSIN - SSPFSSOUT
+                // SSPRXD - SSPTXD
+    // Output   
+                            // PRDATA - slave_to_mem_dataBus[7:0]
+    wire SSPTXINTR;         // SSPTXINTR
+    wire SSPRXINTR;
+    wire SSPCLKOUT;
+    wire SSPFSSOUT;
+    wire SSPTXD;
+    wire SSPOE_B;
+
+
+
+    // WISBHONE Master
+    assign mem_req = TOP.ARM.mem_req_bar;
+
+    // SSP
+    assign ssp_intr = {SSPTXINTR, SSPRXINTR};
+    assign PWDATA = slave_to_mem_dataBus[7:0];
+    assign PRDATA = slave_to_mem_dataBus[7:0];  // TODO: NEEDS MUXING
+
+    //clk
+    reg clk_gen;
    initial //regfile
 begin	
 	if (`INIT_REGFILE) 
@@ -166,17 +259,17 @@ begin
 
   initial
 	begin
-		phi1 = 0;
-		phi2 = 0;
+        clk_gen = 0;
 	end
 
-  always
-	begin
-		#`NONOVERLAP phi1 = 1;
-		#`PHI_HIGH phi1 = 0;
-		#`NONOVERLAP phi2 = 1;
-		#`PHI_HIGH phi2 = 0;
-	end
+//   always
+// 	begin
+// 		#`NONOVERLAP phi1 = 1;
+// 		#`PHI_HIGH phi1 = 0;
+// 		#`NONOVERLAP phi2 = 1;
+// 		#`PHI_HIGH phi2 = 0;
+// 	end
+    always #25 clk_gen = ~clk_gen;
 
 // clear
 
@@ -188,6 +281,15 @@ begin
 		clear = 1;
 	end
 
+    reg ssp_clear_reg;
+    always @(posedge clk_gen) begin
+        if (clear) begin
+            ssp_clear_reg <= 1'b0;
+        end else begin
+            ssp_clear_reg <= 1'b1;
+        end
+    end
+    assign ssp_clear = ssp_clear_reg;
 
   always
   	begin
@@ -195,10 +297,11 @@ begin
 		if (`SCAN_CIRCULAR) scanin = scanout;
 	end
 	
-  memory MEM( 	.dataBus(dataBus), 
-		.addressBus(addressBus), 
-		.r(r), 
-		.w(w), 
+  memory MEM( 	
+        .dataBus(slave_to_mem_dataBus),        // CHANGED
+		.addressBus(mem_adr_o),                // CHANGED         
+		.r(mem_r_o),                           // CHANGED
+		.w(mem_w_o),                           // CHANGED
 		.phi1(phi1), 
 		.phi2(phi2));
   arm ARM( 	.phi1(phi1), 
@@ -207,11 +310,80 @@ begin
 		.test(test),
 		.scanin(scanin),
 		.scanout(scanout),
-		.addressBus(addressBus), 
-		.dataBus(dataBus), 
-		.memoryRead(r), 
-		.memoryWrite(w));
+		.addressBus(arm_to_master_adrBus),     // CHANGED
+		.dataBus(arm_to_master_dataBus),        // CHANGED
+		.memoryRead(memoryRead),               // CHANGED
+		.memoryWrite(memoryWrite));            // CHANGED
 
+    // New Module instantiations
+    cmu CMU (
+        .clk_i(clk_gen),
+        .clear_i(~clear),
+        .ssp_intr_i(ssp_intr),
+        .phi1(phi1),
+        .phi2(phi2),
+        .clk_o(clk),
+        .clear_o(clear_o)
+    );
+
+    w_master WMASTER (
+        .clk_i(clk),
+        .rst_i(clear_o),
+        .mem_req(mem_req),
+        .mwr_arm(mwr_arm),
+        .memoryRead(memoryRead),
+        .memoryWrite(memoryWrite),
+        .addressBus(arm_to_master_adrBus),
+        .dataBus(arm_to_master_dataBus),
+        .dat_i(slave_dat_o),
+        .ack_i(slave_ack_o),
+        .tagn_i(slave_tagn_o),
+        .adr_o(master_adr_o),
+        .dat_o(master_dat_o),
+        .we_o(master_we_o),
+        .stb_o(master_stb_o),
+        .cyc_o(master_cyc_o),
+        .tagn_o(master_tagn_o)
+    );
+
+    w_slave WSLAVE (
+        .rst_i(clear_o),
+        .clk_i(clk),
+        .adr_i(master_adr_o),
+        .dat_i(master_dat_o),
+        .tagn_i(master_tagn_o),
+        .we_i(master_we_o),
+        .stb_i(master_stb_o),
+        .cyc_i(master_cyc_o),
+        // Output
+        .data_o(slave_dat_o),
+        .ack_o(slave_ack_o),
+        .tagn_o(slave_tagn_o_slave),
+        .mem_adr_o(mem_adr_o),
+        .dataBus(slave_to_mem_dataBus),
+        .mem_r_o(mem_r_o),
+        .mem_w_o(mem_w_o),
+        .ssp_sel_o(ssp_sel_o),
+        .ssp_w_o(ssp_w_o)
+    );
+
+    ssp SSP (
+        .PCLK(clk),
+        .CLEAR_B(ssp_clear),
+        .PSEL(ssp_sel_o),
+        .PWRITE(ssp_w_o),
+        .PWDATA(slave_to_mem_dataBus[7:0]),
+        .PRDATA(slave_to_mem_dataBus[7:0]), // TODO : NEEDS MUXING
+        .SSPCLKIN(SSPCLKOUT),
+        .SSPFSSIN(SSPFSSOUT),
+        .SSPRXD(SSPTXD),
+        .SSPOE_B(SSPOE_B),
+        .SSPTXD(SSPTXD),
+        .SSPCLKOUT(SSPCLKOUT),
+        .SSPFSSOUT(SSPFSSOUT),
+        .SSPTXINTR(SSPTXINTR),
+        .SSPRXINTR(SSPRXINTR)
+    );
 
   always 
 	begin
