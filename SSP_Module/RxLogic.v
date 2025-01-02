@@ -36,13 +36,14 @@ module RxLogic (
     input SSPRXD,
     
     // Receive side - FIFO interface
-    output wire [7:0] RxData,
+    output reg [7:0] RxData,
     output wire write_fifo  // FIFO write ready
 );
 // localparam  
     // States
     localparam IDLE = 0;
     localparam WRITING = 1;
+    
 
 // Local reg
     reg [2:0] count= 0;
@@ -54,11 +55,11 @@ module RxLogic (
 //
 
 // Assigns
-    assign RxData = (write_fifo)? shift_reg : 8'hzz;
+    //assign RxData = (write_fifo)? shift_reg : 8'hzz;
 	assign write_fifo = write_fifo_reg;
 //
 
-always @(posedge PCLK or negedge CLEAR_B)begin
+always @(posedge SSPCLKIN or negedge CLEAR_B)begin
     if (!CLEAR_B)begin
         ns_state <= IDLE;
         shift_reg <= 8'hzz;
@@ -66,33 +67,43 @@ always @(posedge PCLK or negedge CLEAR_B)begin
         write_fifo_reg <= 0;
         state <= ns_state;
     end else begin
-	    ns_state <= WRITING;
             case(state)
             IDLE : begin
                 count <= 0;
                 ns_state <= IDLE;
-		        write_fifo_reg <= 0;
                 if(SSPFSSIN)begin
-                    shift_reg <= 8'h0;
                     ns_state <= WRITING;
                 end
             end
             WRITING : begin
                 ns_state <= WRITING;
                 shift_reg[7 - count] <= SSPRXD;
+                // If fifo is full but write is still ready keep signal high
+
                 if(count == 7) begin
+                    RxData <= {shift_reg[7:1], SSPRXD};
                     write_fifo_reg <= 1;    // Data read to write to FIFO
                     ns_state <= (SSPFSSIN)? WRITING : IDLE;   // Cts reading support here
-                end else begin
-                    write_fifo_reg <= 0;
-                    ns_state <= WRITING;
-                end
-		        count <= (count == 7)? 0 : count + 1;
+                end else
+                    write_fifo_reg <= 0; 
+                
+		        count <= count + 1;
             end
             endcase
-        state <= ns_state;
+     
     end
 end
 
+// Negedge
+always @(negedge SSPCLKIN)begin
+    state <= ns_state;
+end
+
+always @(posedge PCLK)begin
+    if(write_fifo_reg && !rx_fifo_full) begin
+        write_fifo_reg <= 0;
+        //RxData <= shift_reg;
+    end
+end
 
 endmodule

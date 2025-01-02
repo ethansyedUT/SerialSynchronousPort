@@ -5,18 +5,17 @@
 module TxFIFO (PSEL, PWRITE, PWDATA, CLEAR_B, PCLK, shf_read_ready, TxData, SSPTXINTR, fifo_empty);
 parameter	FIFO_Width = 8,
 			FIFO_Depth = 4;
-	
-
 input PSEL, PWRITE, CLEAR_B, PCLK;
 input [7:0] PWDATA;
 input shf_read_ready;
-
-
 output reg [7:0] TxData;
 output SSPTXINTR;
 output fifo_empty;
 
 
+// Defines
+`define WRITE (PSEL && PWRITE && !SSPTXINTR)
+`define READ (!fifo_empty && shf_read_ready && PWRITE)
 
 // Control Regs
 reg [FIFO_Width-1:0] fifo [0:FIFO_Depth-1];
@@ -42,8 +41,9 @@ integer i;
 always @ (posedge PCLK) begin
 	if(!CLEAR_B)begin // Clear all FIFO entries
 		for(i = 0; i < FIFO_Depth; i = i + 1)begin
-			fifo[i] <= {FIFO_Width{1'b0}};
+			fifo[i] <= {FIFO_Width{1'bx}};
 		end
+		TxData <= {8{1'bx}};
 		// Control Clear
 		fifo_read_ptr <= 0;
 		fifo_write_ptr <= 0;
@@ -51,19 +51,21 @@ always @ (posedge PCLK) begin
 		// Data Clear
 		data_out <= 8'h00;
 	end else begin
-		if(PSEL && PWRITE)begin // Write a 8-bit entry in FIFO
+		if(`WRITE)begin // Write a 8-bit entry in FIFO
 			if(!SSPTXINTR) begin
 				fifo[fifo_write_ptr] <= PWDATA; // Write data to FIFO
 				fifo_write_ptr <= fifo_write_ptr + 1;
-				count <= count + 1;	
 			end 
-//		end else if(PSEL && !PWRITE) begin	// Read a 8-bit entry
 		end
-		if(!fifo_empty && shf_read_ready && PWRITE)begin
+		if(`READ)begin
 			TxData <= fifo[fifo_read_ptr];
 			fifo_read_ptr <= fifo_read_ptr + 1;
-			count <= count - 1;
 		end
+		
+		if(`WRITE && !(`READ))
+		  count <= count + 1;
+		if(!(`WRITE) && `READ)
+		  count <= count - 1;
 		
 	end
 
