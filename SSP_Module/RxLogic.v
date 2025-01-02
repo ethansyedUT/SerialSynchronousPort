@@ -48,7 +48,7 @@ module RxLogic (
 // Local reg
     reg [2:0] count= 0;
     reg [7:0] shift_reg;
-	reg write_fifo_reg = 0;
+    reg write_fifo_reg = 0;
 
     reg state;
     reg ns_state;
@@ -56,7 +56,7 @@ module RxLogic (
 
 // Assigns
     //assign RxData = (write_fifo)? shift_reg : 8'hzz;
-	assign write_fifo = write_fifo_reg;
+	assign write_fifo = (write_fifo_reg && SSPCLKIN)? write_fifo_reg : 0;
 //
 
 always @(posedge SSPCLKIN or negedge CLEAR_B)begin
@@ -65,8 +65,8 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
         shift_reg <= 8'hzz;
         count <= 0;
         write_fifo_reg <= 0;
-        state <= ns_state;
     end else begin
+	
             case(state)
             IDLE : begin
                 count <= 0;
@@ -74,6 +74,10 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
                 if(SSPFSSIN)begin
                     ns_state <= WRITING;
                 end
+		if(write_fifo_reg && !rx_fifo_full)begin
+		    write_fifo_reg <=0;
+                end
+
             end
             WRITING : begin
                 ns_state <= WRITING;
@@ -90,20 +94,17 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
 		        count <= count + 1;
             end
             endcase
-     
+     	
     end
 end
 
 // Negedge
+
+
 always @(negedge SSPCLKIN)begin
     state <= ns_state;
 end
 
-always @(posedge PCLK)begin
-    if(write_fifo_reg && !rx_fifo_full) begin
-        write_fifo_reg <= 0;
-        //RxData <= shift_reg;
-    end
-end
+
 
 endmodule

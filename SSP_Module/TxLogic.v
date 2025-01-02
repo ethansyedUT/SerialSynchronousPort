@@ -31,7 +31,7 @@ module TxLogic (
     // Transmit side - FIFO interface
     input [7:0] TxData,
     input tx_fifo_empty,
-    output reg read_fifo,  // read from FIFO -> shf reg
+    output wire read_fifo,  // read from FIFO -> shf reg
                             // TxFIFO's PWRITE
     
     // Transmit side - External interface
@@ -55,7 +55,7 @@ reg ns_state;        // Next state of TX unit
 reg [2:0] count = 0; // Bits shifted out
 reg SSPFSSOUT_reg = 0;
 reg read_fifo_reg = 0;
-reg read_fifo_reg_flag = 0;
+
 
 reg SSPTXD_reg;
 
@@ -63,93 +63,70 @@ reg first_edge = 1;
 //
 
 // Output assigns
+	assign read_fifo = (read_fifo_reg && SSPCLKOUT)? read_fifo_reg : 0;
+//
 assign SSPCLKOUT = slowClk;
-//assign SSPTXD = (state == READING)? shift_reg[7] : 1'bz;
 assign SSPTXD = SSPTXD_reg;
 assign SSPFSSOUT = SSPFSSOUT_reg;
-//assign read_fifo = (!tx_fifo_empty && (state == IDLE || (state == READING && count == 7)))? 1'b1 : 1'b0;
 
-always @(posedge SSPCLKOUT)begin
+
+always @(posedge SSPCLKOUT or negedge CLEAR_B)begin
     if (!CLEAR_B)begin
         shift_reg <= 8'hzz;
-        state <= IDLE;
         count <= 0;
         SSPFSSOUT_reg <= 0;
-        read_fifo_reg_flag <= 0;
         read_fifo_reg <= 0;
-        read_fifo <= 0;
         ns_state <= IDLE;
-        // CLK gen + NS Transition
-        state   <= ns_state;
     end else begin
-        //read_fifo <= (!tx_fifo_empty && (state == IDLE || (state == READING && count == 7)));
-        read_fifo_reg <= 0;
-        SSPFSSOUT_reg <= 0;
-        
-        if(PWRITE)begin
-            case(state)
-            IDLE: begin
-                ns_state <= IDLE;
-                count <= 0;
-                SSPTXD_reg <= 1'bx;
-                if(!tx_fifo_empty)begin
-                    ns_state <= READING;
-                    SSPFSSOUT_reg <= 1;
-                    read_fifo <= 1;
-                end
-            end
-            READING: begin
-                ns_state <= READING;
-                SSPFSSOUT_reg <= 0;
-                
-                if (count == 0)begin
-                    shift_reg <= (TxData<<1);
-                    SSPTXD_reg <= TxData[7]; 
-                end else begin
-                    SSPTXD_reg <= shift_reg[7];
-                    shift_reg <= shift_reg << 1;
-                    if(count == 7)begin
-                        if(!tx_fifo_empty)begin
-                            ns_state <= READING;
-                            SSPFSSOUT_reg <= 1;
-                            read_fifo <= 1;
-                        end else
-                            ns_state <= IDLE;
-                    end
-                end 
-		        count <= count + 1; 
-            end
-            endcase
-        end
-    end
+		if(PWRITE)begin
+		  read_fifo_reg <= 0;
+        	  SSPFSSOUT_reg <= 0;
+		  case(state)
+		    IDLE: begin
+		        ns_state <= IDLE;
+		        count <= 0;
+		        SSPTXD_reg <= 1'bx;
+		        if(!tx_fifo_empty)begin
+		            ns_state <= READING;
+		            SSPFSSOUT_reg <= 1;
+		            read_fifo_reg <= 1;
+		        end
+		    end
+		    READING: begin
+		        ns_state <= READING;
+		        SSPFSSOUT_reg <= 0;
+		        
+		        if (count == 0)begin
+		            shift_reg <= (TxData<<1);
+		            SSPTXD_reg <= TxData[7]; 
+		        end else begin
+		            SSPTXD_reg <= shift_reg[7];
+		            shift_reg <= shift_reg << 1;
+		            if(count == 7)begin
+		                if(!tx_fifo_empty)begin
+		                    ns_state <= READING;
+		                    SSPFSSOUT_reg <= 1;
+		                    read_fifo_reg <= 1;
+		                end else
+		                    ns_state <= IDLE;
+		            end
+		        end 
+				count <= count + 1; 
+		    end
+		  endcase
+		
+    	end
+end
 end
 
-always @(posedge PCLK)begin
-        if(first_edge)begin
-            first_edge <= 0;
-        end else
-            slowClk <= ~slowClk;
-        if(read_fifo)begin
-            read_fifo <= 0;
-        end
+always @(posedge PCLK) begin
+	if(first_edge)begin
+	    first_edge <= 0;
+	end else
+	    slowClk <= ~slowClk;
 end
 
 // Negedge 
-always @(negedge CLEAR_B)begin
-    if (!CLEAR_B)begin
-        shift_reg <= 8'hzz;
-        state <= IDLE;
-        count <= 0;
-        SSPFSSOUT_reg <= 0;
-        read_fifo_reg_flag <= 0;
-        read_fifo_reg <= 0;
-        read_fifo <= 0;
-        ns_state <= IDLE;
-        // CLK gen + NS Transition
-        state   <= ns_state;
-    end
-end
-
 always @(negedge PCLK)begin
     SSPOE_B <= ~(state == READING);
 end
