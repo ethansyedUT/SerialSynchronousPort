@@ -52,6 +52,8 @@ module RxLogic (
 
     reg state;
     reg ns_state;
+    reg needs_service;
+    reg prev_full;
 //
 
 // Assigns
@@ -65,6 +67,7 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
         shift_reg <= 8'hzz;
         count <= 0;
         write_fifo_reg <= 0;
+            prev_full <= rx_fifo_full;
     end else begin
 	
             case(state)
@@ -74,10 +77,12 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
                 if(SSPFSSIN)begin
                     ns_state <= WRITING;
                 end
-		if(write_fifo_reg && !rx_fifo_full)begin
-		    write_fifo_reg <=0;
+                if(write_fifo_reg && !rx_fifo_full && !needs_service)begin
+                    write_fifo_reg <= 0;
                 end
-
+                if(prev_full && !rx_fifo_full)begin
+                    needs_service <= 0;
+                end
             end
             WRITING : begin
                 ns_state <= WRITING;
@@ -87,6 +92,7 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
                 if(count == 7) begin
                     RxData <= {shift_reg[7:1], SSPRXD};
                     write_fifo_reg <= 1;    // Data read to write to FIFO
+                    needs_service <= rx_fifo_full;
                     ns_state <= (SSPFSSIN)? WRITING : IDLE;   // Cts reading support here
                 end else
                     write_fifo_reg <= 0; 
@@ -94,7 +100,7 @@ always @(posedge SSPCLKIN or negedge CLEAR_B)begin
 		        count <= count + 1;
             end
             endcase
-     	
+     	      prev_full <= rx_fifo_full;
     end
 end
 
